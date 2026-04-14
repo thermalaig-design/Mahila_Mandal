@@ -67,9 +67,12 @@ const HospitalTrusteeApp = () => {
     localStorage.removeItem('isLoggedIn');
     localStorage.removeItem('user');
     localStorage.removeItem(LAST_VISITED_ROUTE_KEY);
+    localStorage.removeItem('selected_trust_id');
+    localStorage.removeItem('selected_trust_name');
     sessionStorage.removeItem('selectedMember');
     sessionStorage.removeItem('previousScreen');
     sessionStorage.removeItem('previousScreenName');
+    sessionStorage.removeItem('trust_selected_in_session');
     navigate('/login', { replace: true });
   };
 

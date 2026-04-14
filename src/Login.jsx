@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useBackNavigation } from './hooks';
 import { checkPhoneNumber } from './services/authService';
-import { fetchDefaultTrust, fetchTrustByName } from './services/trustService';
+import { fetchDefaultTrust, fetchTrustByName, fetchTrustById } from './services/trustService';
 import logo from '../new_logo.png';
 
 const DEFAULT_TRUST_NAME = 'Mahila Mandal';
@@ -21,8 +21,22 @@ function Login() {
     const loadTrust = async () => {
       try {
         const defaultTrustName = DEFAULT_TRUST_NAME;
-        const namedTrust = await fetchTrustByName(defaultTrustName);
-        const trust = namedTrust || (await fetchDefaultTrust(localStorage.getItem('selected_trust_id')));
+        const envTrustId = import.meta.env.VITE_DEFAULT_TRUST_ID;
+        const envTrustName = import.meta.env.VITE_DEFAULT_TRUST_NAME;
+
+        let trust = null;
+        if (envTrustId) {
+          trust = await fetchTrustById(envTrustId);
+        } else if (envTrustName) {
+          trust = await fetchTrustByName(envTrustName);
+        } else {
+          trust = await fetchTrustByName(defaultTrustName);
+        }
+
+        if (!trust) {
+          trust = await fetchDefaultTrust();
+        }
+
         if (isActive) {
           setTrustInfo(trust);
           if (trust?.id) localStorage.setItem('selected_trust_id', trust.id);

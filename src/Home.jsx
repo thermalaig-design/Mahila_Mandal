@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Users, Clock, FileText, UserPlus, Bell, ChevronRight, Heart, Shield, Plus, ArrowRight, Pill, ShoppingCart, Calendar, Stethoscope, Building2, Phone, QrCode, Monitor, Brain, Package, FileCheck, Search, Filter, MapPin, Star, HelpCircle, BookOpen, Video, Headphones, Menu, X, Home as HomeIcon, Settings, UserCircle, Image, Trash2, Code, FolderOpen, Crown } from 'lucide-react';
+import { User, Users, Clock, FileText, UserPlus, Bell, ChevronLeft, ChevronRight, Heart, Shield, Plus, ArrowRight, Pill, ShoppingCart, Calendar, Stethoscope, Building2, Phone, QrCode, Monitor, Brain, Package, FileCheck, Search, Filter, MapPin, Star, HelpCircle, BookOpen, Video, Headphones, Menu, X, Home as HomeIcon, Settings, UserCircle, Image, Trash2, Code, FolderOpen, Crown } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import TermsModal from './components/TermsModal';
 import ImageSlider from './components/ImageSlider';
@@ -887,14 +887,6 @@ const Home = ({ onNavigate, onLogout, isMember }) => {
 
       <Sidebar isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} onNavigate={onNavigate} currentPage="home" />
 
-      {/* Remark strip (if exists) */}
-      {activeTrust?.remark && (
-        <div className="px-4 py-2" style={{ background: theme.accent, borderBottom: `1px solid ${theme.primary}1A` }}>
-          <p className="text-xs font-semibold text-center" style={{ color: theme.primary }}>{activeTrust.remark}</p>
-        </div>
-      )}
-
-
       {/* ── Dynamic Section Renderer (order from theme.homeLayout) ── */}
       {(() => {
         const SECTIONS = {
@@ -1042,50 +1034,15 @@ const Home = ({ onNavigate, onLogout, isMember }) => {
 
           sponsors: ff('feature_sponsors') && sponsors.length > 0 ? (
             <div className="px-4 mt-5 mb-4" key="sponsors">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
+              <div className="relative">
+                <div className="relative overflow-hidden rounded-3xl">
                   <div
-                    className="w-9 h-9 rounded-2xl flex items-center justify-center"
-                    style={{ background: theme.accent, border: `1px solid ${theme.primary}1A` }}
-                  >
-                    <Star className="h-4.5 w-4.5" style={{ color: theme.primary }} />
-                  </div>
-                  <div>
-                    <p className="text-[12px] font-extrabold uppercase tracking-[0.28em]" style={{ color: theme.primary }}>
-                      {flagsData?.feature_sponsors?.display_name || 'Sponsors'}
-                    </p>
-                    <p className="text-[11px] font-medium" style={{ color: '#94a3b8' }}>
-                      {flagsData?.feature_sponsors?.tagline || 'Community partners'}
-                    </p>
-                  </div>
-                </div>
-                {sponsors.length > 1 && (
-                  <div className="flex items-center gap-1.5">
-                    {sponsors.map((_, idx) => (
-                      <button
-                        key={`sponsor-dot-${idx}`}
-                        onClick={() => setSponsorIndex(idx)}
-                        className="h-1.5 rounded-full transition-all duration-500"
-                        style={{
-                          width: idx === sponsorIndex ? 20 : 7,
-                          background: idx === sponsorIndex ? `linear-gradient(90deg, ${theme.primary}, ${theme.secondary})` : `${theme.primary}40`,
-                          boxShadow: idx === sponsorIndex ? `0 2px 8px ${theme.primary}40` : 'none',
-                        }}
-                        aria-label={`Sponsor ${idx + 1}`}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="relative overflow-hidden rounded-3xl">
-                <div
-                  className="absolute inset-0 pointer-events-none"
-                  style={{
-                    background: `linear-gradient(135deg, ${theme.accentBg}66 0%, #ffffff 38%, ${theme.accent}66 100%)`,
-                  }}
-                />
-                <div className="relative min-h-[168px]">
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      background: `linear-gradient(135deg, ${theme.accentBg}66 0%, #ffffff 38%, ${theme.accent}66 100%)`,
+                    }}
+                  />
+                  <div className="relative min-h-[168px]">
                   {sponsors.map((sponsor, idx) => {
                     const isActive = idx === sponsorIndex;
                     const hasContact = sponsor.phone || sponsor.whatsapp_number || sponsor.website_url || sponsor.city || sponsor.state;
@@ -1199,21 +1156,54 @@ const Home = ({ onNavigate, onLogout, isMember }) => {
                               )}
                             </div>
 
-                            <div
-                              className="w-11 h-11 rounded-[1rem] flex items-center justify-center flex-shrink-0 z-10"
-                              style={{
-                                background: `linear-gradient(145deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
-                                boxShadow: `0 6px 14px ${theme.primary}24`,
-                              }}
-                            >
-                              <ChevronRight className="h-5 w-5 text-white" />
-                            </div>
                           </div>
                         </div>
                       </button>
                     );
                   })}
+                  </div>
                 </div>
+                {sponsors.length > 1 && (
+                  <>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSponsorIndex((prev) => (prev - 1 + sponsors.length) % sponsors.length);
+                      }}
+                      className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-20 h-9 w-9 rounded-full inline-flex items-center justify-center transition-all duration-200 active:scale-95"
+                      style={{ background: 'rgba(255,255,255,0.97)', color: theme.secondary, border: `1px solid ${theme.primary}2B`, boxShadow: `0 8px 20px ${theme.primary}24`, backdropFilter: 'blur(6px)' }}
+                      aria-label="Previous sponsor"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSponsorIndex((prev) => (prev + 1) % sponsors.length);
+                      }}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-20 h-9 w-9 rounded-full inline-flex items-center justify-center transition-all duration-200 active:scale-95"
+                      style={{ background: `linear-gradient(145deg, ${theme.primary} 0%, ${theme.secondary} 100%)`, color: '#fff', border: `1px solid ${theme.primary}35`, boxShadow: `0 10px 22px ${theme.primary}33` }}
+                      aria-label="Next sponsor"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                    <div className="flex justify-center items-center gap-1.5 mt-2">
+                      {sponsors.map((_, idx) => (
+                        <button
+                          key={`sponsor-indicator-${idx}`}
+                          onClick={() => setSponsorIndex(idx)}
+                          className="h-1.5 rounded-full transition-all duration-300"
+                          style={{
+                            width: idx === sponsorIndex ? 16 : 6,
+                            background: idx === sponsorIndex ? `linear-gradient(90deg, ${theme.primary}, ${theme.secondary})` : `${theme.primary}35`,
+                            boxShadow: idx === sponsorIndex ? `0 1px 5px ${theme.primary}38` : 'none',
+                          }}
+                          aria-label={`Go to sponsor ${idx + 1}`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
 
             </div>
