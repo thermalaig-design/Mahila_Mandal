@@ -380,12 +380,14 @@ const Home = ({ onNavigate, onLogout, isMember }) => {
     const selected = trustList.find((t) => normalizeTrustId(t.id) === normalizedId) || null;
     setTrustInfo(selected);
     if (selected?.name) localStorage.setItem('selected_trust_name', selected.name);
+    window.dispatchEvent(new CustomEvent('trust-changed', { detail: { trustId: normalizedId, trustName: selected?.name || null } }));
     try {
       const freshTrust = await fetchTrustById(normalizedId);
       if (freshTrust) {
         setTrustInfo(freshTrust);
         setTrustList((prev) => (prev || []).map((t) => normalizeTrustId(t.id) === normalizedId ? { ...t, ...freshTrust } : t));
         if (freshTrust.name) localStorage.setItem('selected_trust_name', freshTrust.name);
+        window.dispatchEvent(new CustomEvent('trust-changed', { detail: { trustId: normalizedId, trustName: freshTrust.name || null } }));
       }
     } catch (err) {
       console.warn('Failed to refresh trust details:', err);
@@ -685,25 +687,14 @@ const Home = ({ onNavigate, onLogout, isMember }) => {
     defaultTrust ||
     null;
 
-  // ✅ Inject per-trust custom CSS
-  useEffect(() => {
-    const existing = document.getElementById('trust-custom-css');
-    if (existing) existing.remove();
-    if (!theme.customCss) return;
-    const style = document.createElement('style');
-    style.id = 'trust-custom-css';
-    style.textContent = theme.customCss;
-    document.head.appendChild(style);
-    return () => document.getElementById('trust-custom-css')?.remove();
-  }, [theme.customCss]);
-
   const shouldShowTrustSelector = (() => {
     if (trustList.length <= 1) return false;
     try {
       const userStr = localStorage.getItem('user');
       if (!userStr) return false;
       const parsed = JSON.parse(userStr);
-      return parsed?.isRegisteredMember === true;
+      const isRegistered = parsed?.isRegisteredMember;
+      return isRegistered === true || String(isRegistered).toLowerCase() === 'true';
     } catch { return false; }
   })();
   const showTrustSelector = shouldShowTrustSelector && ff('feature_trustlist');
@@ -1278,7 +1269,12 @@ const Home = ({ onNavigate, onLogout, isMember }) => {
           ) : null,
         };
 
-        return (theme.homeLayout || ['gallery', 'quickActions', 'sponsors']).map(key => SECTIONS[key] || null);
+        const baseLayout = Array.isArray(theme.homeLayout) && theme.homeLayout.length > 0
+          ? theme.homeLayout
+          : ['gallery', 'quickActions', 'sponsors'];
+        const orderedLayout = baseLayout.filter((key) => key !== 'trustList');
+        if (showTrustSelector) orderedLayout.unshift('trustList');
+        return orderedLayout.map((key) => SECTIONS[key] || null);
       })()}
 
 

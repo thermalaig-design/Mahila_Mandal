@@ -67,16 +67,20 @@ const applyMemberScopeFilter = (query, trustMeta) => {
   return query.in('members_id', membersIds);
 };
 
-const enrichWithMembershipNumber = (members, trustMeta) => {
-  const map = trustMeta?.membershipNumberByMembersId;
-  if (!map || map.size === 0) return members;
+const enrichWithMembershipData = (members, trustMeta) => {
+  if (!trustMeta) return members || [];
+  const membershipMap = trustMeta?.membershipNumberByMembersId;
+  const roleMap = trustMeta?.roleByMembersId;
+
   return (members || []).map((member) => {
     const mid = member?.members_id || null;
-    const membershipNumber = mid ? map.get(mid) : null;
-    if (!membershipNumber) return member;
+    const membershipNumber = mid ? membershipMap?.get(mid) : null;
+    const mappedRole = mid ? roleMap?.get(mid) : null;
+
     return {
       ...member,
       'Membership number': membershipNumber || member?.['Membership number'] || null,
+      role: mappedRole || member?.role || member?.type || null,
     };
   });
 };
@@ -205,7 +209,17 @@ export const getMembersByType = async (type, trustId = null) => {
       }
     }
     
-    return trustId ? enrichWithMembershipNumber(allData, trustMeta) : allData;
+    const enriched = trustId ? enrichWithMembershipData(allData, trustMeta) : allData;
+
+    if (trustId && ['trustee', 'patron'].includes(type.toLowerCase().trim())) {
+      const normalizedType = type.toLowerCase().trim();
+      return enriched.filter((member) => {
+        const roleLower = String(member?.role || member?.type || '').toLowerCase().trim();
+        return roleLower === normalizedType;
+      });
+    }
+
+    return enriched;
   } catch (error) {
     console.error(`Error fetching ${type} members:`, error);
     throw error;
@@ -244,7 +258,7 @@ export const searchMembers = async (searchQuery, type = null, trustId = null) =>
 
     if (error) throw error;
     
-    return trustId ? enrichWithMembershipNumber(data || [], trustMeta) : (data || []);
+    return trustId ? enrichWithMembershipData(data || [], trustMeta) : (data || []);
   } catch (error) {
     console.error('Error searching members:', error);
     throw error;
@@ -336,7 +350,7 @@ export const getAllMembers = async (trustId = null) => {
         return [];
       }
       const membersData = await fetchMembersByIdChunks(field, values, 'Members');
-      const enriched = enrichWithMembershipNumber(membersData, trustMeta);
+      const enriched = enrichWithMembershipData(membersData, trustMeta);
       const sorted = [...enriched].sort((a, b) => String(a?.Name || '').localeCompare(String(b?.Name || '')));
       return sorted;
     }
@@ -604,7 +618,7 @@ export const getMembersPage = async (page = 1, limit = 100, trustId = null) => {
         throw error;
       }
 
-      const enriched = enrichWithMembershipNumber(data || [], trustMeta);
+      const enriched = enrichWithMembershipData(data || [], trustMeta);
       return { data: enriched, count: values.length };
     }
 

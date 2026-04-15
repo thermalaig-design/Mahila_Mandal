@@ -5,6 +5,7 @@ import { getAllCommitteeMembers, getAllHospitals, getAllElectedMembers, getProfi
 import { getOpdDoctors, getTrusteesAndPatrons } from './services/supabaseService';
 import { registerSidebarState, useAndroidBack } from './hooks';
 import { fetchFeatureFlags, subscribeFeatureFlags } from './services/featureFlags';
+import { fetchSubFeatureFlags, subscribeSubFeatureFlags } from './services/subFeatureFlags';
 
 const CACHE_KEY_HTD = 'healthcare_trustee_directory_cache';
 const CACHE_TIMESTAMP_KEY_HTD = 'healthcare_trustee_directory_cache_timestamp';
@@ -58,6 +59,27 @@ const buildCacheKey = (trustKey) =>
 const buildTimestampKey = (trustKey) =>
   trustKey ? `${CACHE_TIMESTAMP_KEY_HTD}_${trustKey}` : CACHE_TIMESTAMP_KEY_HTD;
 
+const DIRECTORY_ICON_MAP = {
+  members: Users,
+  healthcare: Stethoscope,
+  committee: Users,
+  doctors: Stethoscope,
+  hospitals: Building2,
+  elected: Star,
+};
+
+const resolveDirectoryTier = () => {
+  try {
+    const raw = localStorage.getItem('user');
+    if (!raw) return 'gen';
+    const parsed = JSON.parse(raw);
+    const vipStatus = String(parsed?.vip_status || '').trim().toLowerCase();
+    return vipStatus ? 'vip' : 'gen';
+  } catch {
+    return 'gen';
+  }
+};
+
 const HealthcareTrusteeDirectory = ({ onNavigate }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedDirectory, setSelectedDirectory] = useState(null); // null, 'healthcare', 'trustee', or 'committee'
@@ -82,6 +104,9 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
   const itemsPerPage = 20;
   const { registerBackHandler } = useAndroidBack();
   const [featureFlags, setFeatureFlags] = useState({});
+  const [featureMeta, setFeatureMeta] = useState({});
+  const [subFeatureFlags, setSubFeatureFlags] = useState({});
+  const [subFeatureMeta, setSubFeatureMeta] = useState({});
 
   // Ref to track previous filtered members to avoid infinite loop
   const previousFilteredRef = useRef([]);
@@ -90,15 +115,41 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
   const contentRef = useRef(null);
 
   const isFeatureEnabled = (key) => featureFlags[key] !== false;
+  const hasSubFeatureConfig = Object.keys(subFeatureFlags || {}).length > 0;
+  const isSubFeatureEnabled = (key) => {
+    if (!hasSubFeatureConfig) return true;
+    if (!(key in subFeatureFlags)) return true;
+    return subFeatureFlags[key] !== false;
+  };
+  const getSubFeatureMeta = (key) => subFeatureMeta?.[key] || {};
+  const getSubFeatureDisplayName = (key, fallback) => getSubFeatureMeta(key)?.display_name || fallback;
+  const getSubFeatureTagline = (key, fallback = '') => getSubFeatureMeta(key)?.tagline || fallback;
+  const getSubFeatureIconUrl = (key) => getSubFeatureMeta(key)?.icon_url || null;
+  const getFeatureMeta = (key) => featureMeta?.[key] || {};
+  const getFeatureDisplayName = (key, fallback) => getFeatureMeta(key)?.display_name || fallback;
+  const getSubFeatureOrder = (key, fallback = 9999) => {
+    const value = getSubFeatureMeta(key)?.quick_order;
+    if (value === null || value === undefined || value === '') return fallback;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
   const isDirectoryEnabled = isFeatureEnabled('feature_directory');
   const isDoctorsEnabled = isFeatureEnabled('feature_doctors');
   const isHospitalsEnabled = isFeatureEnabled('feature_hospitals');
-  const isHealthcareEnabled = isDoctorsEnabled || isHospitalsEnabled;
   const isCommitteeEnabled = isFeatureEnabled('feature_committee');
   const isElectedEnabled = isFeatureEnabled('feature_elected_members');
-  const canShowCommittee = isDirectoryEnabled && (isCommitteeEnabled || isElectedEnabled);
-  const canShowTrustee = isDirectoryEnabled;
-  const canShowHealthcare = isDirectoryEnabled && isHealthcareEnabled;
+
+  const isMembersTabEnabled = hasSubFeatureConfig ? isSubFeatureEnabled('members') : true;
+  const isDoctorsTabEnabled = hasSubFeatureConfig ? isSubFeatureEnabled('doctors') : isDoctorsEnabled;
+  const isHospitalsTabEnabled = hasSubFeatureConfig ? isSubFeatureEnabled('hospitals') : isHospitalsEnabled;
+  const isElectedTabEnabled = hasSubFeatureConfig ? isSubFeatureEnabled('elected') : isElectedEnabled;
+  const isCommitteeTabEnabled = hasSubFeatureConfig ? isSubFeatureEnabled('committee') : isCommitteeEnabled;
+  const isHealthcareEnabled = isDoctorsTabEnabled || isHospitalsTabEnabled;
+
+  const canShowTrustee = isDirectoryEnabled && isMembersTabEnabled;
+  const canShowHealthcare = isDirectoryEnabled && (hasSubFeatureConfig ? isSubFeatureEnabled('healthcare') && isHealthcareEnabled : isHealthcareEnabled);
+  const canShowCommittee = isDirectoryEnabled && (hasSubFeatureConfig ? (isSubFeatureEnabled('committee') && (isCommitteeTabEnabled || isElectedTabEnabled)) : (isCommitteeEnabled || isElectedEnabled));
 
   useEffect(() => {
     const loadFlags = async (force = false) => {
@@ -106,6 +157,7 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
       const result = await fetchFeatureFlags(trustId, { force });
       if (result.success) {
         setFeatureFlags(result.flags || {});
+        setFeatureMeta(result.flagsData || {});
       }
     };
     loadFlags();
@@ -119,6 +171,35 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
 
     const trustId = localStorage.getItem('selected_trust_id') || null;
     const unsubscribe = subscribeFeatureFlags(trustId, () => loadFlags(true));
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadSubFlags = async (force = false) => {
+      const trustId = localStorage.getItem('selected_trust_id') || null;
+      const tier = resolveDirectoryTier();
+      const result = await fetchSubFeatureFlags(trustId, { tier, featureKey: 'feature_directory', force });
+      if (result.success) {
+        setSubFeatureFlags(result.flags || {});
+        setSubFeatureMeta(result.meta || {});
+      }
+    };
+    loadSubFlags();
+
+    const handleFocus = () => loadSubFlags(true);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') loadSubFlags(true);
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    const trustId = localStorage.getItem('selected_trust_id') || null;
+    const unsubscribe = subscribeSubFeatureFlags(trustId, () => loadSubFlags(true));
 
     return () => {
       window.removeEventListener('focus', handleFocus);
@@ -367,6 +448,24 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
 
   const getElectedMembersCount = () => electedMembers.length;
 
+  const normalizeTrustRole = (member) => {
+    const raw = String(member?.role || member?.type || '').trim().toLowerCase();
+    return raw;
+  };
+
+  const isTrusteeRole = (member) => {
+    const role = normalizeTrustRole(member);
+    return role === 'trustee' || role === 'trustees';
+  };
+
+  const isPatronRole = (member) => {
+    const role = normalizeTrustRole(member);
+    return role === 'patron' || role === 'patrons';
+  };
+
+  const getTrusteesCount = () => allMembers.filter(isTrusteeRole).length;
+  const getPatronsCount = () => allMembers.filter(isPatronRole).length;
+
   // Function to get members based on selected directory and tab
   const getMembersByDirectoryAndTab = useCallback((directory, tabId) => {
     console.log('getMembersByDirectoryAndTab called:', { directory, tabId, opdDoctorsLength: opdDoctors.length, opdDoctorsLoading, hospitalsLength: hospitals.length });
@@ -398,9 +497,19 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
         return hospitals;
       }
     } else if (directory === 'trustee') {
+      const combineMembers = [...allMembers, ...electedMembers];
+
+      if (tabId === 'trustees') {
+        return combineMembers.filter((member) => isTrusteeRole(member));
+      }
+
+      if (tabId === 'patrons') {
+        return combineMembers.filter((member) => isPatronRole(member));
+      }
+
       if (tabId === 'members') {
-        const combined = [...allMembers, ...electedMembers];
-        const unique = combined.filter((item, index, self) => {
+        const unique = combineMembers.filter((item, index, self) => {
+          if (isTrusteeRole(item) || isPatronRole(item)) return false;
           const hasId = item['Membership number'] || item['S. No.'] || item.elected_id;
           if (!hasId) return true;
           return index === self.findIndex(i =>
@@ -436,34 +545,165 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
   // Healthcare Directory Tabs — memoized to keep referential stability
   const healthcareTabs = useMemo(() => {
     const tabs = [
-      { id: 'doctors', label: `Doctors (${getDoctorsCount()})`, icon: Stethoscope, enabled: isDirectoryEnabled && isDoctorsEnabled },
-      { id: 'hospitals', label: `Hospitals (${getHospitalsCount()})`, icon: Building2, enabled: isDirectoryEnabled && isHospitalsEnabled },
+      {
+        id: 'doctors',
+        label: `${getSubFeatureDisplayName('doctors', 'Doctors')} (${getDoctorsCount()})`,
+        icon: Stethoscope,
+        icon_url: getSubFeatureIconUrl('doctors'),
+        enabled: isDirectoryEnabled && isDoctorsTabEnabled
+      },
+      {
+        id: 'hospitals',
+        label: `${getSubFeatureDisplayName('hospitals', 'Hospitals')} (${getHospitalsCount()})`,
+        icon: Building2,
+        icon_url: getSubFeatureIconUrl('hospitals'),
+        enabled: isDirectoryEnabled && isHospitalsTabEnabled
+      },
     ];
     const filtered = tabs.filter((t) => t.enabled);
+    filtered.sort((a, b) => getSubFeatureOrder(a.id) - getSubFeatureOrder(b.id));
     console.log('healthcareTabs after filtering:', filtered);
     return filtered;
   },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allMembers, opdDoctors, hospitals, isDirectoryEnabled, isDoctorsEnabled, isHospitalsEnabled]);
+    [allMembers, opdDoctors, hospitals, isDirectoryEnabled, isDoctorsTabEnabled, isHospitalsTabEnabled, subFeatureMeta]);
 
   // Trustee Directory Tabs — memoized
-  const trusteeTabs = useMemo(() => [
-    { id: 'members', label: `Members (${allMembers.length})`, icon: Users, enabled: isDirectoryEnabled },
-  ].filter((t) => t.enabled), [allMembers, isDirectoryEnabled]);
+  const getTrusteeTabLabel = (tabId, count) => {
+    if (tabId === 'trustees') return `Trustees (${count})`;
+    if (tabId === 'patrons') return `Patrons (${count})`;
+    return `Members (${count})`;
+  };
+
+  const trusteeTabs = useMemo(() => {
+    const trusteesCount = getTrusteesCount();
+    const patronsCount = getPatronsCount();
+
+    const tabs = [];
+
+    if (trusteesCount > 0) {
+      tabs.push({
+        id: 'trustees',
+        label: getTrusteeTabLabel('trustees', trusteesCount),
+        icon: Star,
+        icon_url: getSubFeatureIconUrl('members'),
+        enabled: isDirectoryEnabled && isMembersTabEnabled
+      });
+    }
+
+    if (patronsCount > 0) {
+      tabs.push({
+        id: 'patrons',
+        label: getTrusteeTabLabel('patrons', patronsCount),
+        icon: UserPlus,
+        icon_url: getSubFeatureIconUrl('members'),
+        enabled: isDirectoryEnabled && isMembersTabEnabled
+      });
+    }
+
+    const filtered = tabs.filter((t) => t.enabled);
+    const orderMap = { trustees: 1, patrons: 2 };
+    filtered.sort((a, b) => (orderMap[a.id] || 99) - (orderMap[b.id] || 99));
+    return filtered;
+  }, [isDirectoryEnabled, isMembersTabEnabled, subFeatureMeta]);
 
   // Committee Directory Tabs — memoized
-  const committeeTabs = useMemo(() => [
-    { id: 'elected', label: `Elected (${getElectedMembersCount()})`, icon: Star, enabled: isDirectoryEnabled && isElectedEnabled },
-    { id: 'committee', label: `Committee (${getCommitteeCount()})`, icon: Users, enabled: isDirectoryEnabled && isCommitteeEnabled },
-  ].filter((t) => t.enabled),
+  const committeeTabs = useMemo(() => {
+    const tabs = [
+      {
+        id: 'elected',
+        label: `${getSubFeatureDisplayName('elected', 'Elected')} (${getElectedMembersCount()})`,
+        icon: Star,
+        icon_url: getSubFeatureIconUrl('elected'),
+        enabled: isDirectoryEnabled && isElectedTabEnabled
+      },
+      {
+        id: 'committee',
+        label: `${getSubFeatureDisplayName('committee', 'Committee')} (${getCommitteeCount()})`,
+        icon: Users,
+        icon_url: getSubFeatureIconUrl('committee'),
+        enabled: isDirectoryEnabled && isCommitteeTabEnabled
+      },
+    ].filter((t) => t.enabled);
+    tabs.sort((a, b) => getSubFeatureOrder(a.id) - getSubFeatureOrder(b.id));
+    return tabs;
+  },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [electedMembers, committeeMembers, isDirectoryEnabled, isElectedEnabled, isCommitteeEnabled]);
+    [electedMembers, committeeMembers, isDirectoryEnabled, isElectedTabEnabled, isCommitteeTabEnabled, subFeatureMeta]);
 
   // Get current tabs based on selected directory — memoized
   const currentTabs = useMemo(() =>
     selectedDirectory === 'healthcare' ? healthcareTabs :
       selectedDirectory === 'committee' ? committeeTabs : trusteeTabs,
     [selectedDirectory, healthcareTabs, trusteeTabs, committeeTabs]);
+
+  const directoryCards = useMemo(() => {
+    const cards = [
+      {
+        id: 'trustee',
+        tabKey: trusteeTabs[0]?.id || 'trustees',
+        title: getSubFeatureDisplayName('members', 'Members Directory'),
+        tagline: getSubFeatureTagline('members', 'Find all trust members'),
+        countText: dataLoaded ? `${allMembers.length} Members` : 'Loading...',
+        enabled: canShowTrustee,
+        icon: DIRECTORY_ICON_MAP.members,
+        icon_url: getSubFeatureIconUrl('members'),
+      },
+      {
+        id: 'healthcare',
+        tabKey: healthcareTabs[0]?.id || 'doctors',
+        title: getSubFeatureDisplayName('healthcare', 'Hospitals & Doctors'),
+        tagline: getSubFeatureTagline('healthcare', 'Find doctors and hospitals'),
+        countText: dataLoaded ? `${getDoctorsCount() + getHospitalsCount()} Profiles` : 'Loading...',
+        enabled: canShowHealthcare,
+        icon: DIRECTORY_ICON_MAP.healthcare,
+        icon_url: getSubFeatureIconUrl('healthcare'),
+      },
+      {
+        id: 'committee',
+        tabKey: committeeTabs[0]?.id || 'committee',
+        title: getSubFeatureDisplayName('committee', 'Committee Directory'),
+        tagline: getSubFeatureTagline('committee', 'Find committee and elected members'),
+        countText: dataLoaded ? `${getCommitteeCount() + getElectedMembersCount()} Profiles` : 'Loading...',
+        enabled: canShowCommittee,
+        icon: DIRECTORY_ICON_MAP.committee,
+        icon_url: getSubFeatureIconUrl('committee'),
+      },
+    ];
+
+    const filtered = cards.filter((card) => card.enabled);
+    filtered.sort((a, b) => {
+      const aOrder = getSubFeatureOrder(a.tabKey === 'members' ? 'members' : a.id);
+      const bOrder = getSubFeatureOrder(b.tabKey === 'members' ? 'members' : b.id);
+      return aOrder - bOrder;
+    });
+    return filtered;
+  },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [allMembers.length, canShowTrustee, canShowHealthcare, canShowCommittee, dataLoaded, healthcareTabs, committeeTabs, subFeatureMeta, opdDoctors.length, hospitals.length, electedMembers.length, committeeMembers.length]);
+
+  const directoryTitleMap = {
+    healthcare: getSubFeatureDisplayName('healthcare', 'Hospitals & Doctors'),
+    committee: getSubFeatureDisplayName('committee', 'Committee Directory'),
+    trustee: getSubFeatureDisplayName('members', 'Members Directory')
+  };
+  const directorySubtitleMap = {
+    healthcare: getSubFeatureTagline('healthcare', 'Find Doctors & Hospitals'),
+    committee: getSubFeatureTagline('committee', 'Find Committee Members'),
+    trustee: getSubFeatureTagline('members', 'Find Members')
+  };
+
+  const getTrusteeSectionTitle = () => {
+    if (activeTab === 'trustees') return 'Trustee Directory';
+    if (activeTab === 'patrons') return 'Patron Directory';
+    return directoryTitleMap.trustee;
+  };
+
+  const getTrusteeSectionSubtitle = () => {
+    if (activeTab === 'trustees') return 'Find Trustees';
+    if (activeTab === 'patrons') return 'Find Patrons';
+    return directorySubtitleMap.trustee;
+  };
 
   useEffect(() => {
     const dirEnabled =
@@ -632,8 +872,7 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
           {isMenuOpen ? <X className="h-6 w-6 text-white" /> : <Menu className="h-6 w-6 text-white" />}
         </button>
         <h1 className="text-base font-bold text-white tracking-wide">
-          {selectedDirectory ? (selectedDirectory === 'healthcare' ? 'Hospitals & Doctors' :
-            selectedDirectory === 'committee' ? 'Committee Directory' : 'Members Directory') : 'Members Directory'}
+          {getFeatureDisplayName('feature_directory', 'Directory')}
         </h1>
         <button
           onClick={() => onNavigate('home')}
@@ -695,26 +934,33 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
                   <Users className="h-7 w-7 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-extrabold" style={{ color: 'var(--brand-navy)' }}>Members Directory</h1>
-                  <p className="text-sm font-medium" style={{ color: 'var(--brand-red)' }}>Find and explore trust members</p>
+                  <h1 className="text-2xl font-extrabold" style={{ color: 'var(--brand-navy)' }}>
+                    {getSubFeatureDisplayName('members', 'Members Directory')}
+                  </h1>
+                  <p className="text-sm font-medium" style={{ color: 'var(--brand-red)' }}>
+                    {getSubFeatureTagline('members', 'Find and explore trust members')}
+                  </p>
                 </div>
               </div>
             </div>
 
             <div className="px-5 -mt-5 space-y-4">
-              {!canShowTrustee && (
+              {directoryCards.length === 0 && (
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 text-center text-sm text-gray-600">
                   Members directory is disabled right now.
                 </div>
               )}
 
-              {canShowTrustee && (
+              {directoryCards.map((card) => {
+                const CardIcon = card.icon || Users;
+                return (
                 <div
+                  key={card.id}
                   className="bg-white rounded-2xl overflow-hidden shadow-md border border-gray-100 cursor-pointer group active:scale-[0.98] transition-all duration-200"
                   style={{ boxShadow: '0 8px 32px rgba(43,47,126,0.10), 0 2px 8px rgba(192,36,26,0.06)' }}
                   onClick={() => {
-                    setSelectedDirectory('trustee');
-                    setActiveTab(trusteeTabs[0]?.id || 'members');
+                    setSelectedDirectory(card.id);
+                    setActiveTab(card.tabKey || null);
                     setSearchQuery('');
                   }}
                 >
@@ -725,17 +971,26 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
                       className="h-16 w-16 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-md"
                       style={{ background: 'linear-gradient(135deg, var(--brand-navy-light) 0%, #dde0f7 100%)' }}
                     >
-                      <Users className="h-8 w-8" style={{ color: 'var(--brand-navy)' }} />
+                      {card.icon_url ? (
+                        <img
+                          src={card.icon_url}
+                          alt={card.title}
+                          className="h-10 w-10 object-contain"
+                          onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
+                        />
+                      ) : (
+                        <CardIcon className="h-8 w-8" style={{ color: 'var(--brand-navy)' }} />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-extrabold text-gray-900 text-lg leading-tight">Members Directory</h3>
-                      <p className="text-gray-500 text-sm mt-0.5">Find all trust members</p>
+                      <h3 className="font-extrabold text-gray-900 text-lg leading-tight">{card.title}</h3>
+                      <p className="text-gray-500 text-sm mt-0.5">{card.tagline}</p>
                       <div className="flex items-center gap-2 mt-3">
                         <span
                           className="px-3 py-1 rounded-full text-xs font-bold"
                           style={{ background: 'var(--brand-red-light)', color: 'var(--brand-red-dark)' }}
                         >
-                          {dataLoaded ? `${allMembers.length} Members` : 'Loading...'}
+                          {card.countText}
                         </span>
                       </div>
                     </div>
@@ -747,7 +1002,8 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
                     </div>
                   </div>
                 </div>
-              )}
+              );
+            })}
             </div>
           </div>
         )}
@@ -770,12 +1026,10 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
                 </button>
                 <div>
                   <h1 className="text-xl font-extrabold leading-tight" style={{ color: 'var(--brand-navy)' }}>
-                    {selectedDirectory === 'healthcare' ? 'Hospitals & Doctors' :
-                      selectedDirectory === 'committee' ? 'Committee Directory' : 'Members Directory'}
+                    {selectedDirectory === 'trustee' ? getTrusteeSectionTitle() : directoryTitleMap[selectedDirectory] || 'Members Directory'}
                   </h1>
                   <p className="text-xs font-semibold mt-0.5" style={{ color: 'var(--brand-red)' }}>
-                    {selectedDirectory === 'healthcare' ? 'Find Doctors & Hospitals' :
-                      selectedDirectory === 'committee' ? 'Find Committee Members' : 'Find Members'}
+                    {selectedDirectory === 'trustee' ? getTrusteeSectionSubtitle() : directorySubtitleMap[selectedDirectory] || 'Find Members'}
                   </p>
                 </div>
               </div>
@@ -795,8 +1049,7 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
                 </div>
                 <input
                   type="text"
-                  placeholder={`Name, Membership No., Mobile - ${selectedDirectory === 'healthcare' ? 'Hospitals & Doctors' :
-                    selectedDirectory === 'committee' ? 'Committee' : 'Members'} directory...`}
+                  placeholder={`Name, Membership No., Mobile - ${selectedDirectory === 'trustee' ? (activeTab === 'trustees' ? 'Trustees' : activeTab === 'patrons' ? 'Patrons' : 'Members') : (directoryTitleMap[selectedDirectory] || 'Members')}...`}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="flex-1 bg-transparent border-none focus:ring-0 text-gray-800 placeholder-gray-400 font-semibold text-sm py-2"
@@ -832,7 +1085,16 @@ const HealthcareTrusteeDirectory = ({ onNavigate }) => {
                           : { background: '#fff', color: 'var(--brand-navy)', border: '1.5px solid var(--brand-navy-light)' }
                         }
                       >
-                        <tab.icon className="h-4 w-4" style={{ color: isActive ? '#fff' : 'var(--brand-red)' }} />
+                        {tab.icon_url ? (
+                          <img
+                            src={tab.icon_url}
+                            alt={tab.label}
+                            className="h-4 w-4 object-contain"
+                            onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
+                          />
+                        ) : (
+                          <tab.icon className="h-4 w-4" style={{ color: isActive ? '#fff' : 'var(--brand-red)' }} />
+                        )}
                         {tab.label}
                       </button>
                     );

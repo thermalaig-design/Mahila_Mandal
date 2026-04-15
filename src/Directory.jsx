@@ -411,21 +411,15 @@ const Directory = ({ onNavigate }) => {
       );
       return [...healthcareMembers, ...hospitals];
     } else if (tabId === 'trustees') {
-      // Get trustees from allMembers
       const trustees = allMembers.filter(member => {
-        if (!member.type) return false;
-        const typeLower = member.type.toLowerCase().trim();
-        return typeLower === 'trustee' || typeLower === 'trustees';
+        const roleValue = String(member?.role || member?.type || '').toLowerCase().trim();
+        return roleValue === 'trustee' || roleValue === 'trustees';
       });
 
-      // Also add elected members who are trustees (merged data already includes member table data)
       const electedTrustees = electedMembers.filter(elected => {
-        // Check if this elected member's type indicates they're a trustee (from merged member table data)
-        return elected.type && (
-          elected.type.toLowerCase().includes('trustee') ||
-          elected.type.toLowerCase() === 'trustee' ||
-          elected.type.toLowerCase() === 'trustees'
-        );
+        const roleValue = String(elected?.role || elected?.type || '').toLowerCase().trim();
+        return roleValue === 'trustee' || roleValue === 'trustees' ||
+          (elected.type && elected.type.toLowerCase().includes('trustee'));
       });
 
       // Also add elected members that are not already included (in case merging failed)
@@ -457,21 +451,15 @@ const Directory = ({ onNavigate }) => {
 
       return unique;
     } else if (tabId === 'patrons') {
-      // Get patrons from allMembers
       const patrons = allMembers.filter(member => {
-        if (!member.type) return false;
-        const typeLower = member.type.toLowerCase().trim();
-        return typeLower === 'patron' || typeLower === 'patrons';
+        const roleValue = String(member?.role || member?.type || '').toLowerCase().trim();
+        return roleValue === 'patron' || roleValue === 'patrons';
       });
 
-      // Also add elected members who are patrons (merged data already includes member table data)
       const electedPatrons = electedMembers.filter(elected => {
-        // Check if this elected member's type indicates they're a patron (from merged member table data)
-        return elected.type && (
-          elected.type.toLowerCase().includes('patron') ||
-          elected.type.toLowerCase() === 'patron' ||
-          elected.type.toLowerCase() === 'patrons'
-        );
+        const roleValue = String(elected?.role || elected?.type || '').toLowerCase().trim();
+        return roleValue === 'patron' || roleValue === 'patrons' ||
+          (elected.type && elected.type.toLowerCase().includes('patron'));
       });
 
       // Combine and remove duplicates based on membership number
