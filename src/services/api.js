@@ -563,13 +563,26 @@ export const getSponsors = async (trustId = null, trustName = null) => {
       if (!refDigits) return false;
       return refDigits === userDigits || refDigits.slice(-10) === userDigits.slice(-10);
     };
+    const toDateOnly = (value) => {
+      if (!value) return null;
+      const raw = String(value).trim();
+      if (!raw) return null;
+      const datePart = raw.includes('T') ? raw.split('T')[0] : raw.split(' ')[0];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return datePart;
+      const parsed = new Date(raw);
+      if (Number.isNaN(parsed.getTime())) return null;
+      const year = parsed.getFullYear();
+      const month = String(parsed.getMonth() + 1).padStart(2, '0');
+      const day = String(parsed.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
 
     let resolvedTrustId = trustId || null;
     if (!resolvedTrustId && trustName) {
       const { data: trustData, error: trustError } = await supabase
         .from('Trust')
         .select('id')
-        .eq('name', trustName)
+        .ilike('name', String(trustName).trim())
         .limit(1);
       if (!trustError && Array.isArray(trustData) && trustData[0]?.id) {
         resolvedTrustId = trustData[0].id;
@@ -698,11 +711,13 @@ export const getSponsors = async (trustId = null, trustName = null) => {
       .filter((row) => {
         const sponsor = Array.isArray(row?.sponsors) ? row.sponsors[0] : row?.sponsors || null;
         if (!sponsor) return false;
-        if (row.start_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.start_date)) return false;
-        if (row.end_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.end_date)) return false;
-        const startOk = !row.start_date || row.start_date <= today;
+        const startDate = toDateOnly(row.start_date);
+        const endDate = toDateOnly(row.end_date);
+        if (row.start_date && !startDate) return false;
+        if (row.end_date && !endDate) return false;
+        const startOk = !startDate || startDate <= today;
         // null end_date = no expiry (always active); otherwise must not be past
-        const endOk = !row.end_date || row.end_date >= today;
+        const endOk = !endDate || endDate >= today;
         return startOk && endOk;
       })
       .map((row) => ({
