@@ -45,7 +45,14 @@ const mergeUniqueTrusts = (...collections) => {
 
 /* eslint-disable react-refresh/only-export-components */
 const Home = ({ onNavigate, onLogout, isMember }) => {
-  const normalizeTrustId = (id) => (id === null || id === undefined ? '' : String(id));
+  const normalizeTrustId = (id) => {
+    if (id === null || id === undefined) return '';
+    const normalized = String(id).trim();
+    if (!normalized) return '';
+    const lowered = normalized.toLowerCase();
+    if (lowered === 'null' || lowered === 'undefined' || lowered === 'nan') return '';
+    return normalized;
+  };
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const mainContainerRef = useRef(null);
   const channelRef = useRef(null);
@@ -398,7 +405,11 @@ const Home = ({ onNavigate, onLogout, isMember }) => {
   useEffect(() => {
     const loadMarqueeUpdates = async () => {
       try {
-        const trustId = localStorage.getItem('selected_trust_id') || selectedTrustId || null;
+        const trustId =
+          normalizeTrustId(selectedTrustId) ||
+          normalizeTrustId(trustInfo?.id) ||
+          normalizeTrustId(localStorage.getItem('selected_trust_id')) ||
+          null;
         const trustName = localStorage.getItem('selected_trust_name') || trustInfo?.name || null;
         const response = await getMarqueeUpdates(trustId, trustName);
         if (response.success && response.data && response.data.length > 0) {
@@ -419,7 +430,11 @@ const Home = ({ onNavigate, onLogout, isMember }) => {
   useEffect(() => {
     const loadSponsor = async () => {
       try {
-        const trustId = selectedTrustId || trustInfo?.id || localStorage.getItem('selected_trust_id') || null;
+        const trustId =
+          normalizeTrustId(selectedTrustId) ||
+          normalizeTrustId(trustInfo?.id) ||
+          normalizeTrustId(localStorage.getItem('selected_trust_id')) ||
+          null;
         const trustName = localStorage.getItem('selected_trust_name') || trustInfo?.name || null;
         if (!trustId) { setSponsors([]); return; }
         const response = await getSponsors(trustId, trustName);
@@ -461,7 +476,11 @@ const Home = ({ onNavigate, onLogout, isMember }) => {
 
   useEffect(() => {
     if (!sponsors.length) return;
-    const trustId = selectedTrustId || trustInfo?.id || localStorage.getItem('selected_trust_id') || null;
+    const trustId =
+      normalizeTrustId(selectedTrustId) ||
+      normalizeTrustId(trustInfo?.id) ||
+      normalizeTrustId(localStorage.getItem('selected_trust_id')) ||
+      null;
     if (!trustId) return;
     const current = sponsors[sponsorIndex];
     if (current?.is_user_match) return;
@@ -494,7 +513,11 @@ const Home = ({ onNavigate, onLogout, isMember }) => {
       try {
         setIsGalleryLoading(true);
         setGalleryError(null);
-        const trustId = selectedTrustId || trustInfo?.id || localStorage.getItem('selected_trust_id') || null;
+        const trustId =
+          normalizeTrustId(selectedTrustId) ||
+          normalizeTrustId(trustInfo?.id) ||
+          normalizeTrustId(localStorage.getItem('selected_trust_id')) ||
+          null;
         if (!trustId) { setGalleryImages([]); setIsGalleryLoading(false); return; }
         const images = await fetchLatestGalleryImages(6, trustId);
         setGalleryImages(images);
