@@ -1,36 +1,33 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowRight, Bell, Calendar, Home as HomeIcon, Menu, X } from 'lucide-react';
+import { Calendar, Clock3, Home as HomeIcon, MapPin, Menu, Users, X } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import { useAppTheme } from './context/ThemeContext';
-import { fetchNoticeboardItems } from './services/communityService';
+import { fetchEvents } from './services/communityService';
 
-const formatDateRange = (startDate, endDate) => {
-  const toLabel = (value) => {
-    if (!value) return '';
-    try {
-      return new Date(value).toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      });
-    } catch {
-      return String(value);
-    }
-  };
-
-  const start = toLabel(startDate);
-  const end = toLabel(endDate);
-
-  if (start && end) return `${start} - ${end}`;
-  if (start) return `From ${start}`;
-  if (end) return `Till ${end}`;
-  return 'Always active';
+const formatDate = (value) => {
+  if (!value) return 'Date TBD';
+  try {
+    return new Date(value).toLocaleDateString('en-IN', {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return String(value);
+  }
 };
 
-const Notices = ({ onNavigate }) => {
+const formatTimeRange = (startTime, endTime) => {
+  if (!startTime && !endTime) return 'Time TBD';
+  if (startTime && endTime) return `${startTime.slice(0, 5)} - ${endTime.slice(0, 5)}`;
+  return startTime ? startTime.slice(0, 5) : endTime.slice(0, 5);
+};
+
+const Events = ({ onNavigate }) => {
   const theme = useAppTheme();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [notices, setNotices] = useState([]);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -64,31 +61,31 @@ const Notices = ({ onNavigate }) => {
     };
   }, [isMenuOpen]);
 
-  const loadNotices = async () => {
+  const loadEvents = async () => {
     try {
       setLoading(true);
       setError('');
       const trustId = localStorage.getItem('selected_trust_id') || null;
       const trustName = localStorage.getItem('selected_trust_name') || null;
-      const response = await fetchNoticeboardItems({ trustId, trustName, includeExpired: false });
+      const response = await fetchEvents({ trustId, trustName, includePast: false });
 
       if (!response.success) {
-        setError(response.message || 'Failed to fetch notices');
-        setNotices([]);
+        setError(response.message || 'Failed to fetch events');
+        setEvents([]);
         return;
       }
 
-      setNotices(response.data || []);
+      setEvents(response.data || []);
     } catch (err) {
-      setError(err?.message || 'Failed to fetch notices');
-      setNotices([]);
+      setError(err?.message || 'Failed to fetch events');
+      setEvents([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadNotices();
+    loadEvents();
   }, []);
 
   return (
@@ -100,7 +97,7 @@ const Notices = ({ onNavigate }) => {
         >
           {isMenuOpen ? <X className="h-6 w-6 text-gray-700" /> : <Menu className="h-6 w-6 text-gray-700" />}
         </button>
-        <h1 className="text-lg font-bold text-gray-800">Notice Board</h1>
+        <h1 className="text-lg font-bold text-gray-800">Events</h1>
         <button
           onClick={() => onNavigate('home')}
           className="p-2 rounded-xl hover:bg-gray-100 transition-colors flex items-center justify-center"
@@ -110,29 +107,21 @@ const Notices = ({ onNavigate }) => {
         </button>
       </div>
 
-      {isMenuOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-0 z-25 lg:hidden"
-          onClick={() => setIsMenuOpen(false)}
-          style={{ pointerEvents: 'auto' }}
-        />
-      )}
-
       <Sidebar
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
         onNavigate={onNavigate}
-        currentPage="notices"
+        currentPage="events"
       />
 
       <div className="bg-white px-6 pt-8 pb-4">
         <div className="flex items-center gap-4">
           <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
-            <Bell className="h-12 w-12" style={{ color: theme.secondary }} />
+            <Calendar className="h-12 w-12" style={{ color: theme.secondary }} />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">Important Updates</h1>
-            <p className="text-gray-500 text-sm font-medium">Live notices from trust database</p>
+            <h1 className="text-2xl font-bold text-gray-800">Upcoming Events</h1>
+            <p className="text-gray-500 text-sm font-medium">Live events from trust database</p>
           </div>
         </div>
       </div>
@@ -152,10 +141,10 @@ const Notices = ({ onNavigate }) => {
       {!loading && error && (
         <div className="px-6 py-10">
           <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
-            <h3 className="font-bold text-red-800">Unable to load notices</h3>
+            <h3 className="font-bold text-red-800">Unable to load events</h3>
             <p className="text-sm text-red-600 mt-1">{error}</p>
             <button
-              onClick={loadNotices}
+              onClick={loadEvents}
               className="mt-4 px-4 py-2 rounded-xl text-white text-sm font-semibold"
               style={{ background: theme.primary }}
             >
@@ -167,46 +156,57 @@ const Notices = ({ onNavigate }) => {
 
       {!loading && !error && (
         <div className="px-6 py-4 space-y-4">
-          {notices.map((notice) => (
+          {events.map((event) => (
             <div
-              key={notice.id}
+              key={event.id}
               className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-all border-l-4"
               style={{ borderLeftColor: theme.primary }}
             >
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full" style={{ color: theme.primary, background: `color-mix(in srgb, ${theme.primary} 10%, white)` }}>
-                  {notice.type || 'general'}
+                  {event.type || 'general'}
                 </span>
-                <div className="flex items-center gap-1.5 text-gray-400 text-[10px] font-bold">
-                  <Calendar className="h-3 w-3" />
-                  {formatDateRange(notice.start_date, notice.end_date)}
-                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                  {event.is_registration_required ? 'Registration Required' : 'Open Event'}
+                </span>
               </div>
 
-              <h3 className="font-bold text-gray-800 text-lg mb-2 leading-tight">{notice.name}</h3>
+              <h3 className="font-bold text-gray-800 text-lg mb-2 leading-tight">{event.title}</h3>
 
-              <p className="text-gray-600 text-sm leading-relaxed">
-                {notice.description || 'No description available.'}
+              <p className="text-gray-600 text-sm leading-relaxed mb-4">
+                {event.description || 'No description available.'}
               </p>
 
-              <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between">
-                <span className="text-[11px] text-gray-500 font-medium">
-                  {(notice.attachments || []).length} attachment(s)
-                </span>
-                <span className="text-xs font-bold flex items-center gap-1" style={{ color: theme.primary }}>
-                  Latest Notice <ArrowRight className="h-3 w-3" />
-                </span>
+              <div className="grid grid-cols-1 gap-2 text-[12px] text-gray-600 font-medium">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-3.5 w-3.5" style={{ color: theme.primary }} />
+                  <span>{formatDate(event.event_date)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock3 className="h-3.5 w-3.5" style={{ color: theme.primary }} />
+                  <span>{formatTimeRange(event.start_time, event.end_time)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-3.5 w-3.5" style={{ color: theme.primary }} />
+                  <span>{event.location || 'Location TBD'}</span>
+                </div>
+                {event.max_participants ? (
+                  <div className="flex items-center gap-2">
+                    <Users className="h-3.5 w-3.5" style={{ color: theme.primary }} />
+                    <span>Max participants: {event.max_participants}</span>
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}
 
-          {notices.length === 0 && (
+          {events.length === 0 && (
             <div className="text-center py-20">
               <div className="bg-gray-50 h-20 w-20 rounded-full flex items-center justify-center mx-auto mb-4 border border-dashed border-gray-300">
-                <Bell className="h-8 w-8 text-gray-300" />
+                <Calendar className="h-8 w-8 text-gray-300" />
               </div>
-              <h3 className="text-gray-800 font-bold">No active notices</h3>
-              <p className="text-gray-500 text-sm mt-1">Noticeboard table is connected. Add records to show here.</p>
+              <h3 className="text-gray-800 font-bold">No upcoming events</h3>
+              <p className="text-gray-500 text-sm mt-1">Events table is connected. Add records to show here.</p>
             </div>
           )}
         </div>
@@ -215,4 +215,4 @@ const Notices = ({ onNavigate }) => {
   );
 };
 
-export default Notices;
+export default Events;

@@ -14,6 +14,7 @@ import Appointments from './Appointments';
 import Reports from './Reports';
 import Referral from './Referral';
 import Notices from './Notices';
+import Events from './Events';
 import Notifications from './Notifications';
 import HealthcareTrusteeDirectory from './HealthcareTrusteeDirectory';
 import MemberDetails from './MemberDetails';
@@ -727,6 +728,7 @@ const HospitalTrusteeApp = () => {
         'reports': '/reports',
         'reference': '/reference',
         'notices': '/notices',
+        'events': '/events',
         'notifications': '/notifications',
         'committee-members': '/committee-members',
         'sponsor-details': '/sponsor-details',
@@ -893,6 +895,16 @@ const HospitalTrusteeApp = () => {
             <ProtectedRoute>
               <FeatureGuard featureKey="feature_noticeboard">
                 <Notices onNavigate={handleNavigate} />
+              </FeatureGuard>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/events"
+          element={
+            <ProtectedRoute>
+              <FeatureGuard featureKey="feature_events">
+                <Events onNavigate={handleNavigate} />
               </FeatureGuard>
             </ProtectedRoute>
           }

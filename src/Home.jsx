@@ -658,28 +658,55 @@ const Home = ({ onNavigate, onLogout, isMember }) => {
     } catch { return dateStr; }
   };
 
-  // -- Build Quick Access tiles DYNAMICALLY from Supabase flagsData -------------
-  // Rule: a feature becomes a Quick Access tile if it:
-  //   1. is_enabled = true
-  //   2. route is set (navigation target)
-  //   3. icon_url is set (tile icon)
-  const enabledQuickActions = Object.entries(flagsData)
+  const ff = (key) => isFeatureEnabled(featureFlags, key);
+  const normalizeQuickRoute = (route) => {
+    const value = String(route || '').trim().toLowerCase();
+    if (value === 'noticeboard') return 'notices';
+    return value;
+  };
+
+  // Build Quick Access tiles from Supabase flag metadata.
+  const dbQuickActions = Object.entries(flagsData)
     .filter(([_, data]) => data?.is_enabled && data?.route && data?.icon_url)
     .map(([key, data]) => ({
       id: key,
-      route: data.route,
+      route: normalizeQuickRoute(data.route),
       displayName: data.display_name || key,
       tagline: data.tagline || '',
       icon_url: data.icon_url || '',
       quick_order: data.quick_order ?? null,
-    }))
+    }));
+
+  // Fallback tiles ensure Events and Noticeboard still render even before flag rows are seeded.
+  const fallbackQuickActions = [
+    ff('feature_noticeboard') ? {
+      id: 'feature_noticeboard_fallback',
+      route: 'notices',
+      displayName: 'Noticeboard',
+      tagline: 'Latest updates',
+      icon_url: '/icons/quick-access/noticeboard.svg',
+      quick_order: 80,
+    } : null,
+    ff('feature_events') ? {
+      id: 'feature_events_fallback',
+      route: 'events',
+      displayName: 'Events',
+      tagline: 'Upcoming activities',
+      icon_url: '/icons/quick-access/events.svg',
+      quick_order: 90,
+    } : null,
+  ].filter(Boolean);
+
+  const enabledQuickActions = [...dbQuickActions, ...fallbackQuickActions]
+    .filter((item, index, all) =>
+      all.findIndex((entry) => normalizeQuickRoute(entry.route) === normalizeQuickRoute(item.route)) === index
+    )
     .sort((a, b) => {
       const ao = a.quick_order ?? 9999;
       const bo = b.quick_order ?? 9999;
       if (ao !== bo) return ao - bo;
       return String(a.displayName).localeCompare(String(b.displayName));
     });
-  const ff = (key) => isFeatureEnabled(featureFlags, key);
 
   const activeTrust =
     trustList.find((trust) => normalizeTrustId(trust.id) === normalizeTrustId(selectedTrustId)) ||
